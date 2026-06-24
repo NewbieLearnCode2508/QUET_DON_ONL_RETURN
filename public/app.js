@@ -17,7 +17,6 @@
     const btnClearToday = document.getElementById('btn-clear-today');
     const btnClearAll = document.getElementById('btn-clear-all');
     const toastContainer = document.getElementById('toast-container');
-    const btnSyncSheets = document.getElementById('btn-sync-sheets');
     const btnModeNormal = document.getElementById('btn-mode-normal');
     const btnModeReturn = document.getElementById('btn-mode-return');
 
@@ -54,6 +53,7 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
     }
     function playBeep(type) {
+        // ... (giữ nguyên code cũ)
         if (!audioCtx) return;
         const now = audioCtx.currentTime;
         if (type === 'order-success') {
@@ -199,7 +199,6 @@
                 showToast(`👋 Chào ${data.username} (${data.role === 'ql' ? 'Quản lý' : 'Nhân viên'})`, 'success');
                 updateUIBasedOnRole();
                 fetchOrders();
-                // Cập nhật interval
                 if (window._fetchInterval) clearInterval(window._fetchInterval);
                 window._fetchInterval = setInterval(fetchOrders, 2000);
             } else {
@@ -214,13 +213,12 @@
 
     function updateUIBasedOnRole() {
         const isQL = currentUser && currentUser.role === 'ql';
-        const adminButtons = [btnClearToday, btnClearAll, btnSyncSheets];
+        const adminButtons = [btnClearToday, btnClearAll];
         adminButtons.forEach(btn => {
             if (btn) {
                 btn.style.display = isQL ? 'inline-flex' : 'none';
             }
         });
-        // Ẩn nút xóa trong từng đơn (sẽ kiểm tra role khi click)
     }
 
     async function verifyPassword() {
@@ -239,55 +237,6 @@
         }
     }
 
-    // ========== Google Sheets Sync ==========
-    const GOOGLE_SHEET_URLS = {
-        online: 'https://script.google.com/macros/s/AKfycbxqkCA7GGXdbWS4D6-kEoOcEPztnAcKcxB4y7QlRGPQmMOCEl3nE0ssfW4BV-1D4Uas/exec',
-        return: 'https://script.google.com/macros/s/AKfycbyBH8CEYFxXl_PXO9G5xToBpZRnR2Dn81jfDS8w919zxRmG8JVtX5zl9YEIb6wPBKAg/exec'
-    };
-
-    async function syncToGoogleSheets() {
-        if (!currentUser || currentUser.role !== 'ql') {
-            showToast('⚠️ Chỉ quản lý mới có quyền đồng bộ', 'warning');
-            return;
-        }
-        const source = currentTab;
-        const ordersToSync = ordersData.filter(o => o.source === source);
-        if (ordersToSync.length === 0) {
-            showToast('⚠️ Không có đơn nào để đồng bộ', 'warning');
-            return;
-        }
-
-        if (!confirm(`Bạn có chắc muốn đồng bộ ${ordersToSync.length} đơn ${source === 'online' ? 'online' : 'trả hàng'} lên Google Sheets?\nDữ liệu cũ trên sheet ngày hôm nay sẽ bị ghi đè.`)) {
-            return;
-        }
-
-        const ok = await verifyPassword();
-        if (!ok) {
-            showToast('❌ Mật khẩu sai hoặc bị từ chối', 'error');
-            return;
-        }
-
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
-        const url = GOOGLE_SHEET_URLS[source];
-        try {
-            const formData = new URLSearchParams();
-            formData.append('data', JSON.stringify({ orders: ordersToSync, date: today }));
-
-            await fetch(url, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: formData.toString()
-            });
-            showToast(`📤 Đã gửi ${ordersToSync.length} đơn ${source === 'online' ? 'online' : 'trả hàng'} lên Google Sheets (ngày ${today})`, 'success');
-        } catch (e) {
-            showToast('❌ Lỗi kết nối đến Google Sheets', 'error');
-            console.error(e);
-        }
-    }
-
     // ========== UI helpers ==========
     function showToast(msg, type = 'info') {
         const t = document.createElement('div');
@@ -302,7 +251,6 @@
         return d.innerHTML;
     }
 
-    // Filter state
     let filterCode = '';
     let filterMinQty = '';
     let filterMaxQty = '';
@@ -347,7 +295,6 @@
             }
             return;
         }
-        // Chế độ bình thường (online)
         if (currentMode === 'order') {
             modeLabel.textContent = 'Quét mã đơn hàng';
             currentOrderBadge.style.display = 'none';
@@ -604,6 +551,7 @@
 
     // ========== Xử lý quét/nhập mã ==========
     async function processCode(code) {
+        // ... (giữ nguyên)
         const trimmed = code.trim();
         if (!trimmed) return;
         if (currentMode === 'order') {
@@ -707,7 +655,6 @@
             showToast('❌ Không thể truy cập camera', 'error');
             return;
         }
-        // Hủy instance cũ nếu có để tránh lỗi trên iPhone
         if (html5QrCode) {
             try {
                 await html5QrCode.stop();
@@ -719,23 +666,13 @@
         const config = {
             fps: 10,
             qrbox: { width: 250, height: 180 },
-            aspectRatio: 1.0 // giúp hiển thị đúng trên iPhone
+            aspectRatio: 1.0
         };
         try {
-            await html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                onScanSuccess,
-                onScanError
-            );
+            await html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanError);
         } catch {
             try {
-                await html5QrCode.start(
-                    { facingMode: "user" },
-                    config,
-                    onScanSuccess,
-                    onScanError
-                );
+                await html5QrCode.start({ facingMode: "user" }, config, onScanSuccess, onScanError);
             } catch {
                 showToast('❌ Không thể khởi động camera', 'error');
                 return;
@@ -959,15 +896,9 @@
         });
     }
 
-    // Đồng bộ (QL)
-    if (btnSyncSheets) {
-        btnSyncSheets.addEventListener('click', syncToGoogleSheets);
-    }
-
     // Ẩn nút admin ban đầu
     if (btnClearToday) btnClearToday.style.display = 'none';
     if (btnClearAll) btnClearAll.style.display = 'none';
-    if (btnSyncSheets) btnSyncSheets.style.display = 'none';
 
     // Cleanup
     window.addEventListener('beforeunload', () => {
