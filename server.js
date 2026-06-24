@@ -1,54 +1,114 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const app = express();
-const PORT = 5500;
+const PORT = process.env.PORT || 5500;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
-const DATA_FILE = path.join(__dirname, 'orders.json');
-const USERS_FILE = path.join(__dirname, 'users.json');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+// ========== Google Sheets Config ==========
+const SHEET_ID_ONLINE = process.env.SHEET_ID_ONLINE;
+const SHEET_ID_RETURN = process.env.SHEET_ID_RETURN;
 
-// ========== Helper functions ==========
-function readOrders() {
-    try {
-        const data = fs.readFileSync(DATA_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (e) {
-        return [];
-    }
-}
-
-function writeOrders(orders) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(orders, null, 2), 'utf8');
-}
-
-function readUsers() {
-    try {
-        const data = fs.readFileSync(USERS_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (e) {
-        return [];
-    }
-}
-
-// ========== Auth ==========
-app.post('/api/login', (req, res) => {
-    const { username, password } = req.body;
-    const users = readUsers();
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
-        res.json({ success: true, role: user.role, username: user.username });
-    } else {
-        res.status(401).json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
-    }
+const auth = new google.auth.GoogleAuth({
+    credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
+
+const sheets = google.sheets({ version: 'v4', auth });
+
+// ========== Helper Functions ==========
+function getSheetId(source) {
+    return source === 'online' ? SHEET_ID_ONLINE : SHEET_ID_RETURN;
+}
+
+async function readOrdersByDate(source, date) {
+    const sheetId = getSheetId(source);
+    const sheetName = `${source}_${date}`; // e.g., online_2026-06-23
+    try {
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId: sheetId,
+            range: `${sheetName}!A:H`,
+        });
+        const rows = response.data.values;
+        if (!rows || rows.length < 2) return [];
+        const orders = [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            let items = [];
+            try { items = row[7] ? JSON.parse(row[7]) : []; } catch (e) { }
+            orders.push({
+                id: row[0] || '',
+                code: row[1] || '',
+                date: row[2] || '',
+                time: row[3] || '',
+                status: row[4] || 'pending',
+                source: row[5] || source,
+                items: items,
+            });
+        }
+        return orders;
+    } catch (e) {
+        // Sheet chưa tồn tại -> trả về rỗng
+        return [];
+    }
+}
+
+async function writeOrdersByDate(orders, source, date) {
+    const sheetId = getSheetId(source);
+    const sheetName = `${source}_${date}`;
+
+    // Tạo sheet nếu chưa tồn tại
+    try {
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: sheetId,
+            requestBody: {
+                requests: [
+                    {
+                        addSheet: {
+                            properties: { title: sheetName }
+                        }
+                    }
+                ]
+            }
+        });
+    } catch (e) {
+        // Sheet đã tồn tại
+    }
+
+    const header = ['id', 'code', 'date', 'time', 'status', 'source', 'items'];
+    const rows = orders.map(order => [
+        order.id,
+        order.code,
+        order.date,
+        order.time,
+        order.status,
+        order.source,
+        JSON.stringify(order.items)
+    ]);
+    const data = [header, ...rows];
+
+    await sheets.spreadsheets.values.clear({
+        spreadsheetId: sheetId,
+        range: `${sheetName}!A:H`,
+    });
+    await sheets.spreadsheets.values.update({
+        spreadsheetId: sheetId,
+        range: `${sheetName}!A:H`,
+        valueInputOption: 'RAW',
+        requestBody: { values: data },
+    });
+}
+
+// ========== Xác thực ==========
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
 app.post('/api/verify-password', (req, res) => {
     const { password } = req.body;
@@ -59,41 +119,66 @@ app.post('/api/verify-password', (req, res) => {
     }
 });
 
-// ========== Orders API ==========
-app.get('/api/orders', (req, res) => {
-    res.json(readOrders());
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    // Demo: nếu bạn dùng users.json thì đọc file đó, hoặc hardcode 2 user
+    if (username === 'ql' && password === ADMIN_PASSWORD) {
+        res.json({ success: true, role: 'ql', username: 'ql' });
+    } else if (username === 'nv' && password === '123456') {
+        res.json({ success: true, role: 'nv', username: 'nv' });
+    } else {
+        res.status(401).json({ success: false, message: 'Sai tài khoản hoặc mật khẩu' });
+    }
 });
 
-app.post('/api/orders', (req, res) => {
+// ========== API ==========
+// Lấy tất cả đơn hôm nay (cả online và return)
+app.get('/api/orders', async (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+    const onlineOrders = await readOrdersByDate('online', today);
+    const returnOrders = await readOrdersByDate('return', today);
+    res.json([...onlineOrders, ...returnOrders]);
+});
+
+// Tạo đơn mới
+app.post('/api/orders', async (req, res) => {
     const { code, source } = req.body;
     if (!code || !code.trim()) {
         return res.status(400).json({ error: 'Mã đơn không được để trống' });
     }
-    const now = new Date();
+    const today = new Date().toISOString().split('T')[0];
+    const orders = await readOrdersByDate(source, today);
     const newOrder = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
         code: code.trim(),
-        timestamp: now.toISOString(),
-        date: now.toISOString().split('T')[0],
-        time: now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        date: today,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         status: 'pending',
         items: [],
-        source: source || 'online'
+        source: source || 'online',
     };
-    const orders = readOrders();
     orders.unshift(newOrder);
-    writeOrders(orders);
+    await writeOrdersByDate(orders, source, today);
     res.status(201).json(newOrder);
 });
 
-app.post('/api/orders/:id/items', (req, res) => {
+// Thêm sản phẩm
+app.post('/api/orders/:id/items', async (req, res) => {
     const { id } = req.params;
     const { code } = req.body;
     if (!code || !code.trim()) {
         return res.status(400).json({ error: 'Mã sản phẩm không được để trống' });
     }
-    const orders = readOrders();
-    const order = orders.find(o => o.id === id);
+    // Tìm đơn trong cả online và return hôm nay
+    const today = new Date().toISOString().split('T')[0];
+    let orders = await readOrdersByDate('online', today);
+    let order = orders.find(o => o.id === id);
+    let source = 'online';
+    if (!order) {
+        orders = await readOrdersByDate('return', today);
+        order = orders.find(o => o.id === id);
+        source = 'return';
+    }
     if (!order) {
         return res.status(404).json({ error: 'Đơn hàng không tồn tại' });
     }
@@ -101,29 +186,35 @@ app.post('/api/orders/:id/items', (req, res) => {
     const existingItem = order.items.find(item => item.code === trimmedCode);
     if (existingItem) {
         existingItem.quantity += 1;
-        writeOrders(orders);
-        return res.status(200).json({ ...existingItem, updated: true });
     } else {
-        const newItem = {
+        order.items.push({
             code: trimmedCode,
             quantity: 1,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        };
-        order.items.push(newItem);
-        writeOrders(orders);
-        return res.status(201).json({ ...newItem, updated: false });
+        });
     }
+    await writeOrdersByDate(orders, source, today);
+    const updatedItem = order.items.find(item => item.code === trimmedCode);
+    res.json({ ...updatedItem, updated: !!existingItem });
 });
 
-app.put('/api/orders/:id/items/:code', (req, res) => {
+// Cập nhật số lượng
+app.put('/api/orders/:id/items/:code', async (req, res) => {
     const { id, code } = req.params;
     const { quantity } = req.body;
     const newQty = Number(quantity);
     if (isNaN(newQty) || newQty < 0) {
         return res.status(400).json({ error: 'Số lượng không hợp lệ' });
     }
-    const orders = readOrders();
-    const order = orders.find(o => o.id === id);
+    const today = new Date().toISOString().split('T')[0];
+    let orders = await readOrdersByDate('online', today);
+    let order = orders.find(o => o.id === id);
+    let source = 'online';
+    if (!order) {
+        orders = await readOrdersByDate('return', today);
+        order = orders.find(o => o.id === id);
+        source = 'return';
+    }
     if (!order) {
         return res.status(404).json({ error: 'Đơn hàng không tồn tại' });
     }
@@ -136,60 +227,73 @@ app.put('/api/orders/:id/items/:code', (req, res) => {
     } else {
         order.items[itemIndex].quantity = newQty;
     }
-    writeOrders(orders);
+    await writeOrdersByDate(orders, source, today);
     res.json(order.items[itemIndex] || { code, quantity: 0 });
 });
 
-app.put('/api/orders/:id/complete', (req, res) => {
+// Hoàn tất đơn
+app.put('/api/orders/:id/complete', async (req, res) => {
     const { id } = req.params;
-    const orders = readOrders();
-    const order = orders.find(o => o.id === id);
+    const today = new Date().toISOString().split('T')[0];
+    let orders = await readOrdersByDate('online', today);
+    let order = orders.find(o => o.id === id);
+    let source = 'online';
+    if (!order) {
+        orders = await readOrdersByDate('return', today);
+        order = orders.find(o => o.id === id);
+        source = 'return';
+    }
     if (!order) return res.status(404).json({ error: 'Đơn hàng không tồn tại' });
     order.status = 'completed';
-    writeOrders(orders);
+    await writeOrdersByDate(orders, source, today);
     res.json(order);
 });
 
-// Xóa một đơn – yêu cầu role ql
-app.delete('/api/orders/:id', (req, res) => {
+// Xóa đơn (yêu cầu role ql)
+app.delete('/api/orders/:id', async (req, res) => {
     const role = req.headers.role;
     if (role !== 'ql') {
         return res.status(403).json({ error: 'Chỉ quản lý mới có quyền xóa' });
     }
     const { id } = req.params;
-    let orders = readOrders();
-    const initialLength = orders.length;
+    const today = new Date().toISOString().split('T')[0];
+    let orders = await readOrdersByDate('online', today);
+    let source = 'online';
+    let found = orders.some(o => o.id === id);
+    if (!found) {
+        orders = await readOrdersByDate('return', today);
+        source = 'return';
+        found = orders.some(o => o.id === id);
+    }
+    if (!found) return res.status(404).json({ error: 'Không tìm thấy' });
     orders = orders.filter(o => o.id !== id);
-    if (orders.length === initialLength) return res.status(404).json({ error: 'Không tìm thấy' });
-    writeOrders(orders);
+    await writeOrdersByDate(orders, source, today);
     res.json({ success: true });
 });
 
-// Xóa đơn hôm nay (online) – yêu cầu role ql
-app.delete('/api/orders/today', (req, res) => {
+// Xóa đơn hôm nay (online) – chỉ QL
+app.delete('/api/orders/today', async (req, res) => {
     const role = req.headers.role;
     if (role !== 'ql') {
         return res.status(403).json({ error: 'Chỉ quản lý mới có quyền xóa' });
     }
     const today = new Date().toISOString().split('T')[0];
-    let orders = readOrders();
-    const before = orders.length;
-    orders = orders.filter(o => !(o.date === today && o.source === 'online'));
-    const removed = before - orders.length;
-    writeOrders(orders);
-    res.json({ removed });
+    await writeOrdersByDate([], 'online', today);
+    res.json({ removed: 'all online orders today' });
 });
 
-// Xóa toàn bộ – yêu cầu role ql
-app.delete('/api/orders', (req, res) => {
+// Xóa toàn bộ – chỉ QL
+app.delete('/api/orders', async (req, res) => {
     const role = req.headers.role;
     if (role !== 'ql') {
         return res.status(403).json({ error: 'Chỉ quản lý mới có quyền xóa' });
     }
-    writeOrders([]);
+    const today = new Date().toISOString().split('T')[0];
+    await writeOrdersByDate([], 'online', today);
+    await writeOrdersByDate([], 'return', today);
     res.json({ success: true });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server đang chạy tại http://192.168.1.9:${PORT}`);
+    console.log(`✅ Server running on http://localhost:${PORT}`);
 });
