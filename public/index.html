@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Quét Đơn Hàng</title>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+      :root {
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --primary-light: #dbeafe;
+        --success: #16a34a;
+        --success-light: #dcfce7;
+        --danger: #dc2626;
+        --danger-light: #fef2f2;
+        --warning: #f59e0b;
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --text: #1e293b;
+        --text-secondary: #64748b;
+        --text-muted: #94a3b8;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        --radius-sm: 8px;
+        --radius: 12px;
+        --radius-lg: 16px;
+        --transition: 0.2s;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+        min-height: 100vh;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .header {
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+        padding: 14px 20px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 1.25rem;
+        color: var(--primary);
+      }
+      .header-brand .icon {
+        width: 38px;
+        height: 38px;
+        background: var(--primary);
+        border-radius: var(--radius-sm);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        color: #fff;
+      }
+      .header-stats {
+        display: flex;
+        gap: 16px;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+      .header-stats span {
+        background: var(--bg);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-weight: 500;
+        border: 1px solid var(--border);
+      }
+      .header-stats .count {
+        font-weight: 700;
+        color: var(--primary);
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      .scanner-card {
+        background: var(--card);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        margin-bottom: 20px;
+        border: 1px solid var(--border);
+      }
+      .scanner-card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        background: #fafbfc;
+      }
+      .scanner-card-header h2 {
+        font-size: 1.05rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #94a3b8;
+        display: inline-block;
+      }
+      .dot.active {
+        background: #ef4444;
+        animation: pulse-dot 1s infinite;
+      }
+      @keyframes pulse-dot {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+        }
+      }
+      .scanner-card-body {
+        padding: 16px 20px;
+      }
+      #reader-container {
+        width: 100%;
+        max-width: 500px;
+        margin: 0 auto;
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: #000;
+        aspect-ratio: 4/3;
+        box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+      #reader {
+        width: 100%;
+        height: 100%;
+      }
+      #reader video {
+        object-fit: cover;
+        width: 100%;
+        height: 100%;
+      }
+      .manual-input-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+      .manual-input-row input {
+        flex: 1;
+        min-width: 180px;
+        padding: 12px 16px;
+        border: 2px solid var(--border);
+        border-radius: var(--radius-sm);
+        font-size: 1rem;
+        background: var(--bg);
+        outline: none;
+      }
+      .manual-input-row input:focus {
+        border-color: var(--primary);
+        background: #fff;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 11px 18px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: 0.2s;
+        white-space: nowrap;
+        user-select: none;
+        touch-action: manipulation;
+        min-height: 42px;
+      }
+      .btn:active {
+        transform: scale(0.96);
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn-success {
+        background: var(--success);
+        color: #fff;
+      }
+      .btn-outline {
+        background: #fff;
+        color: var(--text);
+        border: 2px solid var(--border);
+      }
+      .btn-danger-outline {
+        background: #fff;
+        color: var(--danger);
+        border: 2px solid #fecaca;
+      }
+      .btn-sm {
+        padding: 8px 13px;
+        font-size: 0.82rem;
+        border-radius: 7px;
+        min-height: 38px;
+      }
+      .btn-xs {
+        padding: 4px 10px;
+        font-size: 0.75rem;
+        border-radius: 5px;
+        min-height: 30px;
+      }
+      .btn:disabled {
+        opacity: 0.55;
+        pointer-events: none;
+      }
+      .toast-container {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .toast {
+        padding: 13px 18px;
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: #fff;
+        animation:
+          slideInRight 0.35s ease,
+          fadeOut 0.35s ease 1.8s forwards;
+        max-width: 380px;
+        word-break: break-word;
+      }
+      .toast-success {
+        background: #16a34a;
+      }
+      .toast-error {
+        background: #dc2626;
+      }
+      .toast-warning {
+        background: #d97706;
+      }
+      .toast-info {
+        background: #2563eb;
+      }
+      @keyframes slideInRight {
+        from {
+          transform: translateX(120%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes fadeOut {
+        to {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+      }
+      .order-list-card {
+        background: var(--card);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .order-list-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        background: #fafbfc;
+      }
+      .order-list-header h2 {
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      .order-list-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tab-bar {
+        display: flex;
+        gap: 4px;
+        padding: 8px 20px;
+        background: #f8fafc;
+        border-bottom: 1px solid var(--border);
+      }
+      .tab-btn {
+        padding: 8px 18px;
+        border: none;
+        background: transparent;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-radius: 20px;
+        transition: 0.2s;
+      }
+      .tab-btn.active {
+        background: var(--primary);
+        color: #fff;
+      }
+      .tab-btn:hover:not(.active) {
+        background: #e2e8f0;
+      }
+      .day-group {
+        border-bottom: 1px solid var(--border);
+      }
+      .day-group-header {
+        padding: 14px 20px;
+        background: #f8fafc;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text);
+      }
+      .day-group-header:hover {
+        background: #f1f5f9;
+      }
+      .day-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .day-badge {
+        background: var(--primary-light);
+        color: var(--primary);
+        padding: 4px 10px;
+        border-radius: 14px;
+        font-size: 0.78rem;
+      }
+      .arrow {
+        transition: 0.2s;
+        font-size: 0.7rem;
+        color: var(--text-muted);
+      }
+      .arrow.open {
+        transform: rotate(180deg);
+      }
+      .day-group-items {
+        display: none;
+        padding: 0 20px 10px;
+      }
+      .day-group-items.open {
+        display: block;
+      }
+      .order-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 14px;
+        margin: 4px 0;
+        background: var(--bg);
+        border-radius: var(--radius-sm);
+        flex-wrap: wrap;
+        border: 1px solid transparent;
+      }
+      .order-item:hover {
+        border-color: #cbd5e1;
+        background: #fff;
+      }
+      .order-code {
+        font-weight: 700;
+        font-size: 1rem;
+        font-family: "SF Mono", "Consolas", monospace;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        hyphens: auto;
+      }
+      .order-select {
+        width: 18px;
+        height: 18px;
+        margin-right: 8px;
+        cursor: pointer;
+      }
+      .order-item > div[style*="flex:1"] {
+        min-width: 0;
+      }
+      .order-time {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        overflow-wrap: anywhere;
+      }
+      .order-index {
+        font-size: 0.7rem;
+        background: #e2e8f0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .order-item-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .product-list {
+        margin-left: 20px;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        min-width: 0;
+      }
+      .product-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 2px 0;
+        min-width: 0;
+      }
+      .product-code {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        hyphens: auto;
+      }
+      .product-item input {
+        width: 50px;
+        padding: 2px 4px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        text-align: center;
+      }
+      .status-badge {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-weight: 600;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+      .status-pending {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .status-completed {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .filter-bar {
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border);
+        background: #fafbfc;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .filter-bar input {
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 0.85rem;
+      }
+      .filter-bar input::-webkit-inner-spin-button,
+      .filter-bar input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .select-all-bar {
+        padding: 8px 20px;
+        border-bottom: 1px solid var(--border);
+        background: #f8fafc;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* Login Overlay */
+      #login-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+      }
+      #login-overlay .login-box {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      #login-overlay h2 {
+        margin-bottom: 20px;
+        text-align: center;
+        color: var(--primary);
+      }
+      #login-overlay input {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 1rem;
+      }
+      #login-overlay button {
+        width: 100%;
+        padding: 12px;
+        background: var(--primary);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      #login-overlay button:hover {
+        background: var(--primary-dark);
+      }
+      #login-error {
+        color: var(--danger);
+        margin-top: 10px;
+        display: none;
+        text-align: center;
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
+        body {
+          min-height: 100dvh;
+        }
+        .header {
+          padding: 10px 12px;
+          align-items: stretch;
+        }
+        .header-brand {
+          width: 100%;
+          font-size: 1.05rem;
+        }
+        .header-brand .icon {
+          width: 34px;
+          height: 34px;
+        }
+        .header-stats {
+          width: 100%;
+          gap: 8px;
+          font-size: 0.8rem;
+        }
+        .header-stats span {
+          flex: 1;
+          padding: 7px 8px;
+          text-align: center;
+        }
+        .container {
+          padding: 10px;
+        }
+        .scanner-card,
+        .order-list-card {
+          border-radius: 14px;
+        }
+        .scanner-card-header,
+        .order-list-header,
+        .day-group-header {
+          padding: 12px 14px;
+        }
+        .scanner-card-header > div {
+          width: 100%;
+        }
+        #current-order-badge {
+          width: 100%;
+          text-align: center;
+          margin-bottom: 2px;
+        }
+        .scanner-card-body {
+          padding: 12px 14px;
+        }
+        #reader-container {
+          max-width: 100%;
+          aspect-ratio: 3/4;
+          border-radius: 12px;
+        }
+        .manual-input-row {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .manual-input-row input {
+          min-width: 0;
+          padding: 13px 14px;
+          font-size: 16px;
+        }
+        .manual-input-row .btn {
+          width: 100%;
+        }
+        .btn {
+          padding: 10px 14px;
+          font-size: 0.86rem;
+        }
+        .btn-sm {
+          padding: 9px 12px;
+          font-size: 0.82rem;
+        }
+        .toast-container {
+          top: 74px;
+          left: 10px;
+          right: 10px;
+        }
+        .toast {
+          max-width: none;
+          font-size: 0.86rem;
+          padding: 12px 14px;
+        }
+        .order-list-header {
+          align-items: stretch;
+        }
+        .order-list-actions {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+        .order-list-actions .btn {
+          width: 100%;
+        }
+        .day-info {
+          gap: 6px;
+        }
+        .day-group-items {
+          padding: 0 14px 12px;
+        }
+        .order-item {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 8px 10px;
+          padding: 10px;
+        }
+        .order-item-right {
+          grid-column: 1/-1;
+          justify-content: space-between;
+          gap: 8px;
+          width: 100%;
+        }
+        .order-time {
+          font-size: 0.78rem;
+        }
+        .product-list {
+          margin-left: 12px;
+          font-size: 0.82rem;
+        }
+        .product-item {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 0;
+        }
+        .product-item input {
+          width: 56px;
+          padding: 6px 4px;
+          font-size: 16px;
+        }
+        .product-item .btn-xs {
+          min-width: 34px;
+          padding: 2px 8px;
+        }
+        .order-select {
+          width: 18px;
+          height: 18px;
+          margin-right: 6px;
+        }
+        .filter-bar {
+          padding: 10px 14px;
+          flex-wrap: wrap;
+        }
+        .filter-bar input {
+          width: 100px !important;
+          font-size: 0.8rem;
+        }
+        .select-all-bar {
+          padding: 8px 14px;
+          gap: 6px;
+        }
+      }
+      @media (max-width: 380px) {
+        .order-list-actions {
+          grid-template-columns: 1fr;
+        }
+        .header-stats {
+          flex-direction: column;
+        }
+        #reader-container {
+          aspect-ratio: 1/1.15;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login Overlay -->
+    <div id="login-overlay">
+      <div class="login-box">
+        <h2>🔐 Đăng nhập</h2>
+        <input
+          type="text"
+          id="login-username"
+          placeholder="Tên đăng nhập"
+          autocomplete="username"
+        />
+        <input
+          type="password"
+          id="login-password"
+          placeholder="Mật khẩu"
+          autocomplete="current-password"
+        />
+        <button id="login-btn">Đăng nhập</button>
+        <div id="login-error"></div>
+      </div>
+    </div>
+
+    <header class="header">
+      <div class="header-brand">
+        <div class="icon">📦</div>
+        <span>Quét Đơn Hàng</span>
+      </div>
+      <div class="header-stats">
+        <span>Hôm nay: <strong class="count" id="count-today">0</strong></span>
+        <span>Tổng: <strong class="count" id="count-total">0</strong></span>
+      </div>
+    </header>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <div class="container">
+      <div class="scanner-card">
+        <div class="scanner-card-header">
+          <h2>
+            <span class="dot" id="scanner-dot"></span>
+            <span id="mode-label">Máy quét mã</span>
+          </h2>
+          <div
+            style="
+              display: flex;
+              gap: 6px;
+              flex-wrap: wrap;
+              align-items: center;
+            "
+          >
+            <button
+              class="btn btn-outline btn-sm"
+              id="btn-mode-normal"
+              style="border-color: #2563eb; color: #2563eb"
+            >
+              📦 Quét đơn
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-mode-return">
+              🔄 Quét hàng trả
+            </button>
+          </div>
+          <div
+            style="
+              display: flex;
+              gap: 8px;
+              flex-wrap: wrap;
+              align-items: center;
+            "
+          >
+            <span
+              id="current-order-badge"
+              style="display: none"
+              class="status-badge status-pending"
+            ></span>
+            <button class="btn btn-primary btn-sm" id="btn-start-scan">
+              📷 Quét camera
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-stop-scan" disabled>
+              ⏹ Dừng
+            </button>
+            <button
+              class="btn btn-success btn-sm"
+              id="btn-complete-order"
+              style="display: none"
+            >
+              ✅ Hoàn tất đơn
+            </button>
+          </div>
+        </div>
+        <div class="scanner-card-body">
+          <div id="reader-container"><div id="reader"></div></div>
+          <div class="manual-input-row">
+            <input
+              type="text"
+              id="manual-input"
+              placeholder="Nhập mã (đơn/sản phẩm)..."
+              autocomplete="off"
+            />
+            <button class="btn btn-success" id="btn-add-manual">➕ Thêm</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="order-list-card">
+        <div class="order-list-header">
+          <h2>📋 Danh sách đã quét</h2>
+          <div class="order-list-actions">
+            <button class="btn btn-outline btn-sm" id="btn-export-csv">
+              📥 Xuất đã chọn
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-copy-all">
+              📋 Sao chép
+            </button>
+            <button class="btn btn-danger-outline btn-sm" id="btn-clear-today">
+              🗑 Xóa hôm nay
+            </button>
+            <button class="btn btn-danger-outline btn-sm" id="btn-clear-all">
+              🗑 Xóa tất cả
+            </button>
+            <button class="btn btn-outline btn-sm" id="btn-sync-sheets">
+              📤 Đồng bộ GG Sheet
+            </button>
+          </div>
+        </div>
+        <div class="tab-bar" id="tab-bar">
+          <button class="tab-btn active" data-tab="online">
+            📦 Đơn online
+          </button>
+          <button class="tab-btn" data-tab="return">🔄 Hàng trả</button>
+        </div>
+        <div id="order-list-content"></div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
